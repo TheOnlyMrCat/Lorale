@@ -8,5 +8,7 @@ The extended form has to be compiled into the shortened form to be interpreted b
 * ₤: Gets a variable by a given name for invoking methods upon, etc.
 * ¶: Prints the object(s) passed to it to the console
 
-## Use of the shortened form as a recreational language
+
+## Footnotes
+### Use of the shortened form as a recreational language
 The shortened form an be used as a recreational language according to the condition that is has to be coded, not compiled.
