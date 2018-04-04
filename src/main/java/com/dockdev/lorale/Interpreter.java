@@ -2,25 +2,25 @@ package com.dockdev.lorale;
 
 import com.dockdev.lorale.exeption.InitializationError;
 import com.dockdev.lorale.exeption.LoraleException;
+import com.dockdev.lorale.lang.LoraleObject;
+import org.jetbrains.annotations.Contract;
 
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.PrintStream;
-import java.util.Arrays;
-import java.util.HashMap;
+import java.util.Map;
 import java.util.Scanner;
 
 public class Interpreter {
 
-	public PrintStream console = System.out;
+	public static PrintStream console = System.out;
 
-	private HashMap<String, LoraleObject> variables = new HashMap<>();
-	
 	public static void main(String[] args) {
 		Interpreter interpreter = new Interpreter();
 		String input = args[0];
 		if (input.charAt(0) == ';') {
-			interpreter.interpret(input, null);
+			interpreter.object = new LoraleObject(input.substring(1, input.indexOf('{', 1)));
+			interpreter.interpret(input.substring(input.indexOf('{')+1), null);
 		} else {
 			File file = new File(input);
 			if (file.exists()) {
@@ -31,6 +31,10 @@ public class Interpreter {
 					e.printStackTrace();
 				}
 				assert scanner != null;
+				String line = scanner.nextLine();
+				interpreter.object = new LoraleObject(line.substring(1, line.indexOf('{', 1)));
+
+				interpreter.interpret(line, null);
 				while (scanner.hasNextLine()) {
 					interpreter.interpret(scanner.nextLine(), null);
 				}
@@ -38,55 +42,65 @@ public class Interpreter {
 		}
 	}
 
-	<R extends LoraleObject> R interpret(String lorale, LoraleObject.Method<R> method) {
-		if (lorale.charAt(0) == ';') {
-			lorale = lorale.substring(1);
+	private LoraleObject object;
+
+	public <R extends LoraleObject> R interpret(String code, LoraleObject.Method<R> method) {
+		if (code.charAt(0) == ';') {
+			code = code.substring(1);
 		}
 		LoraleObject previousObject;
-		for (int carat = 0; carat < lorale.length(); carat++) {
-			int endOfInstruction = lorale.indexOf(';', carat);
-			switch (lorale.charAt(carat)) {
-				case '§': handleVariable(lorale.substring(carat+1, endOfInstruction)); carat = endOfInstruction+1; break;
-				case '₤': previousObject = variables.get(lorale.substring(carat+1, endOfInstruction));
-				case '¶': handleMethod(lorale.substring(carat+1, endOfInstruction > lorale.indexOf('.', carat) ? lorale.indexOf('.', carat) : endOfInstruction), previousObject); break;
-				default: throw new LoraleException(String.format("Unknown instruction: %s", lorale.charAt(carat)));
+		int endOfInstruction;
+		for (int carat = 0; carat < code.length(); carat = endOfInstruction + 1) {
+			endOfInstruction = code.indexOf(';', carat);
+			switch (code.charAt(carat)) {
+				case '§': handleVariable(code.substring(carat+1, endOfInstruction)); carat = endOfInstruction+1; break;
+				case '₤': previousObject = object.getVariable(code.substring(carat+1, endOfInstruction));
+				case '¶': handleMethod("print", code.substring(carat+1, endOfInstruction), LoraleObject.loraleConsole); break;
+				case '}':
+					try {
+						return (R) object.getVariable(code.substring(carat + 1, endOfInstruction));
+					} catch (ClassCastException e) {
+						throw new LoraleException("return type not respected");
+					}
+				default: throw new LoraleException(String.format("Unknown instruction: %s", code.charAt(carat)));
 			}
 		}
+		if (method != null) throw new LoraleException("No return statement found in method " + method);
+		return null;
 	}
 
-	private Object handleMethod(String name, String body, LoraleObject invokedUpon) {
+	@Contract("_, _, null -> fail")
+	private LoraleObject handleMethod(String name, String body, LoraleObject invokedUpon) {
 		if (invokedUpon == null) throw new LoraleException("");
 		String[] args = body.split(",");
 		LoraleObject[] argobjects = new LoraleObject[args.length];
 		for (int i = 0; i < args.length; i++) {
-			if (canParseInt(args[i]) || (args[i].charAt(0) == '"' && args[0].charAt(1) == '"')) argobjects[i] = args[i];
-			else argobjects[i] = variables.get(args[i]);
+			//TODO implement constants
+			argobjects[i] = object.getVariable(args[i]);
 		}
-		return invokedUpon.invokeMethod()
-	}
-
-	public void addVariable(String name, LoraleObject arg) {
-		variables.put(name, arg);
+		return invokedUpon.invokeMethod(name, argobjects);
 	}
 
 	private  void handleVariable(String extract) {
 		String[] split = extract.split("=");
-		Object value = split[1];
+		Map<String, LoraleObject> variables = object.getAllVariables();
 		char type = split[0].charAt(0);
 		try {
 			switch (type) {
 				case 'i':
-					variables.put(split[0], (Integer) value);
-				case 'l':
-					variables.put(split[0], (Long) value);
-				case 'd':
-					variables.put(split[0], (Double) value);
-				case 'f':
-					variables.put(split[0], (Float) value);
-				case 'b':
-					variables.put(split[0], (Boolean) value);
-				case 'c':
-					variables.put(split[0], (Character) value);
+					variables.put(split[0], LoraleObject.asInteger(split[1]));
+//				case 'l':
+//					variables.put(split[0], LoraleObject.asLong(split[1]));
+//				case 'd':
+//					variables.put(split[0], LoraleObject.asDouble(split[1]));
+//				case 'f':
+//					variables.put(split[0], LoraleObject.asFloat(split[1]));
+//				case 'b':
+//					variables.put(split[0], LoraleObject.asBoolean(split[1]));
+//				case 'c':
+//					variables.put(split[0], LoraleObject.asCharacter(split[1]));
+				case 's':
+					variables.put(split[0], LoraleObject.asString(split[1]));
 			}
 		} catch (ClassCastException e) {
 			throw new InitializationError("could not initialize variable: " + split[0], e);
